@@ -26,7 +26,10 @@ class Program
 			runner.JsonSchemaNetEvaluateOnly(1000);
 		}
 #else
-		var summary = BenchmarkRunner.Run<SingleSchemaRunner>();
+		if (args.Length == 0)
+			BenchmarkRunner.Run<SingleSchemaRunner>();
+		else
+			BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
 #endif
 	}
 }

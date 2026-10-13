@@ -103,8 +103,11 @@ public class JsonSchemaNode
 		}
 
 		var evaluationRegistration = (this, context.InstanceLocation);
-		if (context.EvaluatedNodes.Any(x => x == evaluationRegistration))
-			throw new JsonSchemaException($"Cycle detected at evaluation path '{context.EvaluationPath}' and instance location '{context.InstanceLocation}'");
+		foreach (var evaluatedNode in context.EvaluatedNodes)
+		{
+			if (evaluatedNode == evaluationRegistration)
+				throw new JsonSchemaException($"Cycle detected at evaluation path '{context.EvaluationPath}' and instance location '{context.InstanceLocation}'");
+		}
 		context.EvaluatedNodes.Push(evaluationRegistration);
 
 		var newScope = !Equals(BaseUri, context.Scope.LocalScope);
@@ -114,7 +117,8 @@ public class JsonSchemaNode
 		results.IsValid = true;
 		context.EvaluatedKeywords = new KeywordEvaluation[Keywords.Length];
 		int i = 0;
-		foreach (var keyword in Keywords.OrderBy(x => x.EvaluationOrder))
+		// BuildNode stores keywords in stable evaluation order.
+		foreach (var keyword in Keywords)
 		{
 			var evaluation = keyword.Handler.Evaluate(keyword, context);
 			context.EvaluatedKeywords[i] = evaluation;
