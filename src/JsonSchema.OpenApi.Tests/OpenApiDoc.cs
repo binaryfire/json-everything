@@ -42,10 +42,10 @@ public class OpenApiDoc : IBaseDocument
 			{
 				LocalSchema = target.Value,
 				BaseUri = BaseUri,
+				RelativePath = JsonPointer.Empty,
 				PathFromResourceRoot = pointer
 			};
 			subschema = JsonSchema.BuildNode(newContext);
-			subschema.PathFromResourceRoot = pointer;
 #pragma warning restore CS0618 // Type or member is obsolete
 
 			_lookup[pointer] = subschema;
@@ -56,7 +56,7 @@ public class OpenApiDoc : IBaseDocument
 
 	// Paths are returned like: $['components']['schemas']
 	// but we need pointers like /components/schemas to do lookups
-	private static JsonPointer ConvertToPointer(JsonPath path) => 
+	private static JsonPointer ConvertToPointer(JsonPath path) =>
 		JsonPointer.Parse(path.AsJsonPointer());
 
 	private static JsonElement ConvertToElement(JsonNode? node) =>

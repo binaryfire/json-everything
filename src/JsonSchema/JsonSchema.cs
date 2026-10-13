@@ -182,18 +182,20 @@ public class JsonSchema : IBaseDocument
 
 	private static JsonSchemaNode BuildNode(BuildContext context, bool isRoot)
 	{
-		if (context.LocalSchema.ValueKind == JsonValueKind.True)
+		var relativePath = context.RelativePath;
+#pragma warning disable CS0618 // Type or member is obsolete
+		// Saved contexts rebuild this schema; only the node retains its parent traversal suffix.
+		context.PathFromResourceRoot = context.PathFromResourceRoot.Combine(relativePath);
+		context.RelativePath = JsonPointer.Empty;
+		if (context.LocalSchema.ValueKind is JsonValueKind.True or JsonValueKind.False)
 		{
-			var trueNode = JsonSchemaNode.True();
-			trueNode.RelativePath = context.RelativePath;
-			return trueNode;
-		}
-
-		if (context.LocalSchema.ValueKind == JsonValueKind.False)
-		{
-			var falseNode = JsonSchemaNode.False();
-			falseNode.RelativePath = context.RelativePath;
-			return falseNode;
+			return new JsonSchemaNode
+			{
+				BaseUri = context.BaseUri,
+				Source = context.LocalSchema,
+				RelativePath = relativePath,
+				PathFromResourceRoot = context.PathFromResourceRoot
+			};
 		}
 
 		if (context.LocalSchema.ValueKind != JsonValueKind.Object)
@@ -208,8 +210,8 @@ public class JsonSchema : IBaseDocument
 		}
 
 		var allowBaseUriChange = context.LocalSchema.TryGetProperty("$ref", out _) &&
-		                         context.Dialect.RefIgnoresSiblingKeywords &&
-		                         !isRoot;
+								 context.Dialect.RefIgnoresSiblingKeywords &&
+								 !isRoot;
 
 		var keywordData = new List<KeywordData>();
 		var orderedKeywords = context.LocalSchema
@@ -222,34 +224,31 @@ public class JsonSchema : IBaseDocument
 
 			var handler = context.Dialect.GetHandler(keyword);
 
+			var keywordValue = handler is AnnotationKeyword
+				? keyword
+				: handler.ValidateKeywordValue(value);
+			if (handler is IdKeyword && !allowBaseUriChange)
+			{
+				var id = (Uri)keywordValue!;
+				// A plain-name fragment identifies a location within the same resource.
+				if (handler is not Keywords.Draft06.IdKeyword oldId ||
+					!id.OriginalString.StartsWith("#") || !oldId.AnchorPattern.IsMatch(id.OriginalString[1..]))
+					context.PathFromResourceRoot = JsonPointer.Empty;
+				context.BaseUri = context.BaseUri.Resolve(id);
+			}
+
 			var data = new KeywordData(context)
 			{
 				EvaluationOrder = context.Dialect.GetEvaluationOrder(keyword) ?? 0,
 				RawValue = value,
 				Handler = handler,
-				Value = handler is AnnotationKeyword
-					? keyword
-					: handler.ValidateKeywordValue(value)
+				Value = keywordValue
 			};
-			if (handler is SchemaKeyword) { /* no-op */ }
-			else if (handler is IdKeyword && !allowBaseUriChange)
-			{
-#pragma warning disable CS0618 // Type or member is obsolete
-				context.PathFromResourceRoot = JsonPointer.Empty;
-				context.BaseUri = context.BaseUri.Resolve((Uri)data.Value!);
-			}
-
 			var keywordContext = context with
 			{
-				PathFromResourceRoot = context.PathFromResourceRoot.Combine(context.RelativePath).Combine(keyword)
+				PathFromResourceRoot = context.PathFromResourceRoot.Combine(keyword)
 			};
 			handler.BuildSubschemas(data, keywordContext);
-
-			foreach (var subschema in data.Subschemas)
-			{
-				subschema.PathFromResourceRoot = keywordContext.PathFromResourceRoot.Combine(subschema.RelativePath);
-#pragma warning restore CS0618 // Type or member is obsolete
-			}
 
 			keywordData.Add(data);
 		}
@@ -274,8 +273,10 @@ public class JsonSchema : IBaseDocument
 			BaseUri = context.BaseUri,
 			Source = context.LocalSchema,
 			Keywords = keywordData.OrderBy(x => x.EvaluationOrder).ToArray(),
-			RelativePath = context.RelativePath
+			RelativePath = relativePath,
+			PathFromResourceRoot = context.PathFromResourceRoot
 		};
+#pragma warning restore CS0618 // Type or member is obsolete
 
 		var oldIdKeyword = keywordData.FirstOrDefault(x => x.Handler is Keywords.Draft06.IdKeyword);
 		if (oldIdKeyword is not null)
@@ -452,11 +453,11 @@ public class JsonSchema : IBaseDocument
 				{
 					BaseUri = BaseUri,
 					LocalSchema = localSchema.Value,
+					RelativePath = JsonPointer.Empty,
 #pragma warning disable CS0618 // Type or member is obsolete
 					PathFromResourceRoot = pointer
 				};
 				subschema = BuildNode(newContext);
-				subschema.PathFromResourceRoot = pointer;
 #pragma warning restore CS0618 // Type or member is obsolete
 			}
 		}

@@ -50,12 +50,10 @@ public class JsonElementBaseDocument : IBaseDocument
 			{
 				LocalSchema = localSchema.Value,
 				BaseUri = BaseUri,
+				RelativePath = JsonPointer.Empty,
 				PathFromResourceRoot = pointer
 			};
-			var node = JsonSchema.BuildNode(newContext);
-			node.PathFromResourceRoot = pointer;
-
-			return node;
+			return JsonSchema.BuildNode(newContext);
 		});
 #pragma warning restore CS0618 // Type or member is obsolete
 	}
